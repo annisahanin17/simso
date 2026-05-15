@@ -1,5 +1,5 @@
-import pool from './db.js';
-import jwt from 'jsonwebtoken';
+const pool = require('./db');
+const jwt = require('jsonwebtoken');
 
 const verifyToken = (event) => {
   const token = event.headers.authorization?.split(' ')[1];
@@ -11,7 +11,7 @@ const verifyToken = (event) => {
   }
 };
 
-export const handler = async (event, context) => {
+exports.handler = async (event, context) => {
   const user = verifyToken(event);
   if (!user) {
     return { statusCode: 401, body: JSON.stringify({ message: 'Unauthorized' }) };
@@ -36,7 +36,7 @@ export const handler = async (event, context) => {
         'INSERT INTO requests (user_id, drug_name, quantity, location, priority, photo_url, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
         [user.id, drug_name, quantity, location, priority, photo_url, 'Pending']
       );
-      
+
       await pool.query(
         'INSERT INTO activity_logs (request_id, user_id, action) VALUES ($1, $2, $3)',
         [res.rows[0].id, user.id, 'Mengajukan permintaan baru']
