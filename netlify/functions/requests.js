@@ -1,5 +1,7 @@
-const pool = require('./db');
-const jwt = require('jsonwebtoken');
+import pool from './db.js';
+import jwt from 'jsonwebtoken';
+
+const normalizeRole = (role) => (role ?? '').toString().trim().toLowerCase();
 
 const verifyToken = (event) => {
   const token = event.headers.authorization?.split(' ')[1];
@@ -11,7 +13,17 @@ const verifyToken = (event) => {
   }
 };
 
-exports.handler = async (event, context) => {
+const allowedStatuses = new Set(['Pending', 'Processing', 'Completed', 'Rejected']);
+
+const isValidTransition = (fromStatus, toStatus) => {
+  if (!allowedStatuses.has(toStatus)) return false;
+  if (fromStatus === toStatus) return true;
+  if (fromStatus === 'Pending' && (toStatus === 'Processing' || toStatus === 'Rejected')) return true;
+  if (fromStatus === 'Processing' && toStatus === 'Completed') return true;
+  return false;
+};
+
+export const handler = async (event, context) => {
   const user = verifyToken(event);
   if (!user) {
     return { statusCode: 401, body: JSON.stringify({ message: 'Unauthorized' }) };
@@ -31,6 +43,9 @@ exports.handler = async (event, context) => {
     }
 
     if (method === 'POST') {
+      if (normalizeRole(user.role) !== 'farmasi') {
+        return { statusCode: 403, body: JSON.stringify({ message: 'Forbidden (Farmasi only)' }) };
+      }
       const { drug_name, quantity, location, priority, photo_url } = JSON.parse(event.body);
       const res = await pool.query(
         'INSERT INTO requests (user_id, drug_name, quantity, location, priority, photo_url, status) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
@@ -46,7 +61,27 @@ exports.handler = async (event, context) => {
     }
 
     if (method === 'PUT') {
+      if (normalizeRole(user.role) !== 'logistik') {
+        return { statusCode: 403, body: JSON.stringify({ message: 'Forbidden (Logistik only)' }) };
+      }
+
       const { id, status } = JSON.parse(event.body);
+      if (!id || !status) {
+        return { statusCode: 400, body: JSON.stringify({ message: 'id dan status wajib diisi' }) };
+      }
+      if (!allowedStatuses.has(status)) {
+        return { statusCode: 400, body: JSON.stringify({ message: 'Status tidak valid' }) };
+      }
+
+      const current = await pool.query('SELECT status FROM requests WHERE id = $1', [id]);
+      if (!current.rows[0]) {
+        return { statusCode: 404, body: JSON.stringify({ message: 'Request tidak ditemukan' }) };
+      }
+      const fromStatus = current.rows[0].status;
+      if (!isValidTransition(fromStatus, status)) {
+        return { statusCode: 400, body: JSON.stringify({ message: `Transisi status tidak valid: ${fromStatus} -> ${status}` }) };
+      }
+
       const res = await pool.query(
         'UPDATE requests SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
         [status, id]
@@ -54,7 +89,7 @@ exports.handler = async (event, context) => {
 
       await pool.query(
         'INSERT INTO activity_logs (request_id, user_id, action) VALUES ($1, $2, $3)',
-        [id, user.id, `Status diupdate ke ${status}`]
+        [id, user.id, `Status diupdate: ${fromStatus} -> ${status}`]
       );
 
       return { statusCode: 200, body: JSON.stringify(res.rows[0]) };
