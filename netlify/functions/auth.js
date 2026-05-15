@@ -1,18 +1,27 @@
-const pool = require('./db');
-const jwt = require('jsonwebtoken');
+import pool from './db.js';
+import jwt from 'jsonwebtoken';
 
-exports.handler = async (event, context) => {
+export const handler = async (event, context) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
   try {
     const { email, password } = JSON.parse(event.body);
+    console.log('Login attempt for:', email);
+
+    if (!process.env.DATABASE_URL) {
+      console.error('DATABASE_URL is not defined');
+      return { 
+        statusCode: 500, 
+        body: JSON.stringify({ message: 'Database configuration missing' }) 
+      };
+    }
 
     const res = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     const user = res.rows[0];
 
-    if (!user || user.password !== password) { // Simple password check for now, should use bcrypt in prod
+    if (!user || user.password !== password) {
       return {
         statusCode: 401,
         body: JSON.stringify({ message: 'Email atau password salah' })
@@ -36,7 +45,7 @@ exports.handler = async (event, context) => {
     console.error('Auth error:', err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ message: 'Internal Server Error' })
+      body: JSON.stringify({ message: 'Internal Server Error', error: err.message })
     };
   }
 };

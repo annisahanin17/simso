@@ -1,5 +1,5 @@
-const pool = require('./db');
-const jwt = require('jsonwebtoken');
+import pool from './db.js';
+import jwt from 'jsonwebtoken';
 
 const verifyToken = (event) => {
   const token = event.headers.authorization?.split(' ')[1];
@@ -11,7 +11,7 @@ const verifyToken = (event) => {
   }
 };
 
-exports.handler = async (event, context) => {
+export const handler = async (event, context) => {
   const user = verifyToken(event);
   if (!user) {
     return { statusCode: 401, body: JSON.stringify({ message: 'Unauthorized' }) };
