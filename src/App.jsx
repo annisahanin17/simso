@@ -7,11 +7,16 @@ import RequestForm from './pages/RequestForm';
 import Monitoring from './pages/Monitoring';
 import Verification from './pages/Verification';
 
+const normalizeRole = (role) => (role ?? '').toString().trim().toLowerCase();
+
 const ProtectedRoute = ({ children, roles }) => {
   const { user, loading } = useAuth();
   if (loading) return <div>Loading...</div>;
   if (!user) return <Navigate to="/login" />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" />;
+  if (roles) {
+    const allowed = roles.map(normalizeRole);
+    if (!allowed.includes(normalizeRole(user.role))) return <Navigate to="/" />;
+  }
   return children;
 };
 
